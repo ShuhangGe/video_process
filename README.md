@@ -70,16 +70,66 @@ vllm_processor = VideoProcessor(vllm_config)
 
 ## 📚 Architecture
 
-The video processor follows a modular pipeline architecture:
+The video processor follows a modular pipeline architecture with a complete 8-step processing workflow:
 
+### 🔄 Complete Processing Pipeline
+
+```mermaid
+flowchart TD
+    A[Video Input] --> B[Input Processing]
+    B --> C{Cache Check}
+    C -->|Hit| D[Return Cached Result]
+    C -->|Miss| E[Frame Extraction]
+    E --> F[Frame Processing]
+    F --> G[Token Calculation]
+    G --> H[Metadata Compilation]
+    H --> I[Quality Assessment]
+    I --> J[Cache Storage]
+    J --> K[Format Output]
+    K --> L[Final Result]
+    
+    subgraph "Error Handling"
+        M[Error Detection]
+        N[Graceful Degradation]
+        O[Error Formatting]
+    end
+    
+    subgraph "Performance Monitoring"
+        P[Step Timing]
+        Q[Memory Tracking]
+        R[Cache Analytics]
+    end
+    
+    subgraph "Multi-Format Support"
+        S[Standard Format]
+        T[HuggingFace Format]
+        U[OpenAI Format]
+        V[Streaming Format]
+        W[Raw Format]
+    end
+    
+    K --> S
+    K --> T
+    K --> U
+    K --> V
+    K --> W
+    
+    style A fill:#e1f5fe
+    style L fill:#c8e6c9
+    style C fill:#fff3e0
+    style E fill:#f3e5f5
 ```
-Input → Frame Extraction → Smart Sampling → Frame Processing → Tokenization → Format Output
-  ↓            ↓              ↓               ↓              ↓           ↓
-Video      Multi-backend   Intelligent    Smart Resize   Token       Multiple
-Files      (TorchVision,   Sampling       + Quality      Count       Output
-URLs       Decord,         Strategies     Processing     Calc        Formats
-Base64     TorchCodec)
-```
+
+### 📋 Processing Steps
+
+1. **📥 Input Processing** - Validates and normalizes various input formats (files, URLs, base64, frame lists)
+2. **💾 Cache Check** - Intelligent caching with LRU eviction and hit/miss tracking
+3. **🎬 Frame Extraction** - Multi-backend video reading (TorchVision/Decord/TorchCodec) with automatic fallback
+4. **🖼️ Frame Processing** - Smart resizing, memory optimization, and quality control
+5. **🧮 Token Calculation** - Model-aware token counting and memory estimation
+6. **📋 Metadata Compilation** - Comprehensive processing information collection
+7. **💾 Cache Storage** - Async result caching for performance optimization
+8. **📤 Format Output** - Multi-format conversion for different frameworks and APIs
 
 ### Core Components
 
