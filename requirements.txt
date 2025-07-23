@@ -1,0 +1,26 @@
+# Core dependencies
+torch>=2.0.0
+torchvision>=0.15.0
+numpy>=1.21.0
+Pillow>=9.0.0
+requests>=2.25.0
+
+# Optional video backends (choose based on needs)
+# decord>=0.6.0                    # Fast video reading (optional)
+# torchcodec>=0.0.1               # FFmpeg-based video reading (optional)
+
+# Format and utility dependencies  
+packaging>=21.0
+
+# Optional VLLM integration
+# vllm>=0.2.0                     # Uncomment for VLLM integration
+
+# Development and testing (optional)
+# pytest>=7.0.0
+# pytest-cov>=4.0.0
+# black>=22.0.0
+# flake8>=5.0.0
+
+# Documentation (optional)
+# sphinx>=5.0.0
+# sphinx-rtd-theme>=1.0.0 
