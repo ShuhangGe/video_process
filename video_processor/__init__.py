@@ -2,14 +2,12 @@
 Video Processor - Model-agnostic video processing pipeline for multimodal AI models
 
 A comprehensive video processing toolkit that efficiently processes videos for any multimodal
-AI model, with configurable parameters, multiple output formats, and VLLM integration.
+AI model, with configurable parameters and multiple output formats.
 
 Main Features:
 - Multi-backend video reading (TorchVision, Decord, TorchCodec)
 - Smart frame sampling with configurable parameters
-- VLLM integration for efficient inference
 - Batch processing optimization
-- OpenAI-compatible API server
 - Multiple output formats
 """
 
@@ -17,8 +15,7 @@ from .config import (
     VideoProcessorConfig, 
     get_default_config, 
     get_fast_config, 
-    get_high_quality_config, 
-    get_vllm_config
+    get_high_quality_config
 )
 from .core.video_input import VideoInputHandler
 from .core.frame_extractor import FrameExtractor
@@ -27,16 +24,7 @@ from .core.frame_processor import FrameProcessor
 from .core.tokenizer import VideoTokenizer
 from .utils.format_handler import FormatHandler
 
-try:
-    from .vllm.vllm_integration import VLLMVideoProcessor
-    from .vllm.batch_processor import BatchProcessor
-    from .vllm.serving import VideoAPIServer
-    VLLM_AVAILABLE = True
-except ImportError:
-    VLLMVideoProcessor = None
-    BatchProcessor = None
-    VideoAPIServer = None
-    VLLM_AVAILABLE = False
+
 
 __version__ = "0.1.0"
 __all__ = [
@@ -54,20 +42,10 @@ __all__ = [
     "get_default_config",
     "get_fast_config", 
     "get_high_quality_config",
-    "get_vllm_config",
-    
-    # VLLM components (if available)
-    "VLLMVideoProcessor",
-    "BatchProcessor", 
-    "VideoAPIServer",
     
     # Main API functions
     "process_video",
     "process_videos_batch",
-    "create_api_server",
-    
-    # Constants
-    "VLLM_AVAILABLE",
 ]
 
 
@@ -90,14 +68,6 @@ class VideoProcessor:
         self.frame_processor = FrameProcessor(self.config)
         self.tokenizer = VideoTokenizer(self.config)
         self.format_handler = FormatHandler(self.config)
-        
-        # Initialize VLLM components if available
-        if VLLM_AVAILABLE and self.config.vllm.enable_vllm:
-            self.vllm_processor = VLLMVideoProcessor(self.config)
-            self.batch_processor = BatchProcessor(self.config)
-        else:
-            self.vllm_processor = None
-            self.batch_processor = None
     
     def process(self, video_input, output_format=None, **kwargs):
         """
@@ -270,12 +240,7 @@ class VideoProcessor:
         batch_start = time.time()
         output_format = output_format or self.config.output.default_format
         
-        # Use VLLM batch processor if available
-        if self.batch_processor and self.config.vllm.enable_vllm:
-            logger.info(f"Processing batch of {len(video_inputs)} videos with VLLM batch processor")
-            return self.batch_processor.process_batch(video_inputs, output_format=output_format, **kwargs)
-        
-        # Fallback to sequential processing
+        # Sequential processing
         logger.info(f"Processing batch of {len(video_inputs)} videos sequentially")
         results = []
         
@@ -303,25 +268,14 @@ class VideoProcessor:
         
         return results
     
-    def create_server(self, **server_config):
-        """Create an API server for video processing."""
-        if not VLLM_AVAILABLE:
-            raise RuntimeError("VLLM integration required for API server")
-        return VideoAPIServer(self.config, **server_config)
-    
+
     def get_system_info(self):
         """Get comprehensive system information."""
         return {
             "config": {
-                "vllm_enabled": self.config.vllm.enable_vllm,
                 "strict_mode": self.config.strict_mode,
                 "device": self.config.device,
                 "dtype": self.config.dtype,
-            },
-            "components": {
-                "vllm_available": VLLM_AVAILABLE,
-                "vllm_processor": self.vllm_processor is not None,
-                "batch_processor": self.batch_processor is not None,
             },
             "backends": self.frame_extractor.get_backend_info(),
             "format_info": self.format_handler.get_format_info(),
@@ -386,16 +340,4 @@ def process_videos_batch(video_inputs, config=None, **kwargs):
     return processor.process_batch(video_inputs, **kwargs)
 
 
-def create_api_server(config=None, **server_config):
-    """
-    Convenience function to create an API server.
-    
-    Args:
-        config: Optional VideoProcessorConfig
-        **server_config: Server configuration parameters
-        
-    Returns:
-        VideoAPIServer instance
-    """
-    processor = VideoProcessor(config)
-    return processor.create_server(**server_config) 
+ 

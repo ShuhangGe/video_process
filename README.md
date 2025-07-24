@@ -1,6 +1,6 @@
 # Video Processor
 
-A comprehensive, model-agnostic video processing pipeline for multimodal AI models with configurable parameters, multiple output formats, and VLLM integration.
+A comprehensive, model-agnostic video processing pipeline for multimodal AI models with configurable parameters and multiple output formats.
 
 ## ✨ Features
 
@@ -9,7 +9,6 @@ A comprehensive, model-agnostic video processing pipeline for multimodal AI mode
 - **📏 Smart Resizing**: Maintains aspect ratios while optimizing for model requirements
 - **🧮 Token Calculation**: Estimates token counts and memory requirements for different models
 - **📤 Multiple Output Formats**: Standard, HuggingFace, OpenAI, Streaming, and Raw formats
-- **🚀 VLLM Integration**: Optional integration for efficient serving and inference
 - **⚡ Performance Optimized**: Batch processing, memory management, and async operations
 
 ## 🚀 Quick Start
@@ -27,9 +26,6 @@ pip install -r requirements.txt
 # Optional: Install video backends for better performance
 pip install decord  # Fast video reading
 pip install torchcodec  # FFmpeg-based reading
-
-# Optional: Install VLLM for serving capabilities
-pip install vllm
 ```
 
 ### Basic Usage
@@ -52,7 +48,7 @@ print(f"Total tokens: {result.token_info['total_tokens']}")
 ### Configuration Examples
 
 ```python
-from video_processor.config import get_fast_config, get_high_quality_config, get_vllm_config
+from video_processor.config import get_fast_config, get_high_quality_config
 
 # Fast processing (lower quality, higher speed)
 fast_config = get_fast_config()
@@ -61,10 +57,6 @@ fast_processor = VideoProcessor(fast_config)
 # High quality processing
 hq_config = get_high_quality_config()
 hq_processor = VideoProcessor(hq_config)
-
-# VLLM integration
-vllm_config = get_vllm_config("Qwen/Qwen2.5-VL-7B-Instruct")
-vllm_processor = VideoProcessor(vllm_config)
 ```
 
 ## 📚 Architecture
@@ -156,12 +148,6 @@ config.sampling.strategy = "adaptive"
 # Processing configuration
 config.processing.max_pixels = 1024 * 28 * 28
 config.processing.interpolation_mode = "bicubic"
-
-# Enable VLLM integration
-config.enable_vllm_integration(
-    model_name="Qwen/Qwen2.5-VL-7B-Instruct",
-    max_model_len=8192
-)
 ```
 
 ## 📤 Output Formats
@@ -190,22 +176,6 @@ result = processor.process(video, output_format="openai")
 for chunk in processor.process(video, output_format="streaming"):
     # Process video in chunks for large files
     process_chunk(chunk["frames"])
-```
-
-## 🚀 VLLM Integration
-
-Enable VLLM for efficient serving and inference:
-
-```python
-# Configure VLLM
-config = get_vllm_config("Qwen/Qwen2.5-VL-7B-Instruct")
-processor = VideoProcessor(config)
-
-# Process with VLLM optimizations
-result = processor.process(video)
-
-# Create API server
-server = processor.create_server(host="0.0.0.0", port=8000)
 ```
 
 ## ⚡ Performance Features
@@ -289,9 +259,6 @@ python video_processor/examples/basic_usage.py
 
 # Backend benchmark (coming soon)
 python video_processor/examples/benchmark_backends.py
-
-# VLLM integration example (coming soon)  
-python video_processor/examples/vllm_example.py
 ```
 
 ## 🤝 Contributing
@@ -310,7 +277,6 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 - Based on Qwen2.5-VL video processing implementation
 - Inspired by multimodal AI model requirements
-- Built for compatibility with VLLM serving framework
 
 ## 📞 Support
 

@@ -2,7 +2,7 @@
 Configuration management system for the video processor.
 
 This module provides a comprehensive configuration system that allows users to customize
-all aspects of the video processing pipeline, from input handling to VLLM integration.
+all aspects of the video processing pipeline, from input handling to output formatting.
 """
 
 import os
@@ -27,7 +27,7 @@ DEFAULT_FPS = 2.0
 DEFAULT_FPS_MIN_FRAMES = 4
 DEFAULT_FPS_MAX_FRAMES = 768
 
-# VLLM-aware video total pixels (90% of max tokens for safety)
+# Default video total pixels (conservative default for memory safety)
 DEFAULT_VIDEO_TOTAL_PIXELS = int(float(os.environ.get('VIDEO_MAX_PIXELS', 128000 * 28 * 28 * 0.9)))
 
 
@@ -115,44 +115,6 @@ class ProcessingConfig:
 
 
 @dataclass
-class VLLMConfig:
-    """Configuration for VLLM integration."""
-    
-    # VLLM settings
-    enable_vllm: bool = False
-    model_name: str = "Qwen/Qwen2.5-VL-7B-Instruct"
-    max_model_len: int = 5632
-    max_num_seqs: int = 5
-    
-    # Multi-modal settings
-    limit_mm_per_prompt: Dict[str, int] = field(default_factory=lambda: {
-        "video": 1, 
-        "image": 5,
-        "audio": 1
-    })
-    
-    # Performance settings
-    gpu_memory_utilization: float = 0.8
-    tensor_parallel_size: int = 1
-    quantization: Optional[str] = None  # "awq", "gptq", "squeezellm", etc.
-    
-    # Generation parameters
-    temperature: float = 0.1
-    max_tokens: int = 256
-    top_p: float = 0.95
-    top_k: int = 50
-    
-    # Serving configuration
-    host: str = "127.0.0.1"
-    port: int = 8000
-    served_model_name: Optional[str] = None
-    
-    # API compatibility
-    openai_compatible: bool = True
-    enable_streaming: bool = True
-
-
-@dataclass
 class OutputConfig:
     """Configuration for output formats and handling."""
     
@@ -223,7 +185,6 @@ class VideoProcessorConfig:
     backend: BackendConfig = field(default_factory=BackendConfig)
     sampling: SamplingConfig = field(default_factory=SamplingConfig) 
     processing: ProcessingConfig = field(default_factory=ProcessingConfig)
-    vllm: VLLMConfig = field(default_factory=VLLMConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     
@@ -268,13 +229,7 @@ class VideoProcessorConfig:
         if self.processing.min_pixels >= self.processing.max_pixels:
             raise ValueError("min_pixels must be less than max_pixels")
         
-        # Validate VLLM parameters
-        if self.vllm.enable_vllm:
-            if self.vllm.max_model_len <= 0:
-                raise ValueError("max_model_len must be positive")
-            
-            if not (0 < self.vllm.gpu_memory_utilization <= 1):
-                raise ValueError("gpu_memory_utilization must be between 0 and 1")
+
         
         logger.info("Configuration validation passed")
     
@@ -296,8 +251,6 @@ class VideoProcessorConfig:
             config_dict['sampling'] = convert_section(config_dict['sampling'], SamplingConfig)
         if 'processing' in config_dict:
             config_dict['processing'] = convert_section(config_dict['processing'], ProcessingConfig)
-        if 'vllm' in config_dict:
-            config_dict['vllm'] = convert_section(config_dict['vllm'], VLLMConfig)
         if 'output' in config_dict:
             config_dict['output'] = convert_section(config_dict['output'], OutputConfig)
         if 'logging' in config_dict:
@@ -352,35 +305,19 @@ class VideoProcessorConfig:
             else:
                 json.dump(config_dict, f, indent=2)
     
-    def enable_vllm_integration(self, **vllm_kwargs):
-        """Enable VLLM integration with optional parameters."""
-        self.vllm.enable_vllm = True
-        for key, value in vllm_kwargs.items():
-            if hasattr(self.vllm, key):
-                setattr(self.vllm, key, value)
-    
-    def disable_vllm_integration(self):
-        """Disable VLLM integration."""
-        self.vllm.enable_vllm = False
-    
-
     def set_device(self, device: str):
         """Set processing device."""
         self.device = device
-        if device.startswith("cuda") and self.vllm.enable_vllm:
-            self.vllm.tensor_parallel_size = 1  # Adjust if needed
     
     def optimize_for_memory(self):
         """Apply memory optimization settings."""
         self.processing.enable_half_precision = True
         self.processing.max_batch_size = 4
-        self.vllm.gpu_memory_utilization = 0.7
     
     def optimize_for_speed(self):
         """Apply speed optimization settings.""" 
         self.backend.priority = ["decord", "torchcodec", "torchvision"]
         self.processing.max_batch_size = 16
-        self.vllm.gpu_memory_utilization = 0.9
 
 
 # Predefined configurations for common use cases
@@ -408,8 +345,4 @@ def get_fast_config() -> VideoProcessorConfig:
     return config
 
 
-def get_vllm_config(model_name: str = "Qwen/Qwen2.5-VL-7B-Instruct") -> VideoProcessorConfig:
-    """Get configuration with VLLM integration enabled."""
-    config = VideoProcessorConfig()
-    config.enable_vllm_integration(model_name=model_name)
-    return config 
+ 

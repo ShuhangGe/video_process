@@ -12,7 +12,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 import torch
-from video_processor import VideoProcessor, get_default_config, get_vllm_config
+from video_processor import VideoProcessor, get_default_config
 from video_processor.config import get_fast_config, get_high_quality_config
 
 
@@ -25,7 +25,7 @@ def basic_video_processing():
     processor = VideoProcessor(config)
     
     # Example video file path (replace with actual video file)
-    video_path = "sample_video.mp4"
+    video_path = "/mnt/d/codes/qwen25vl/vision_test/04kDhD6PPY3Qozt9.mp4"
     
     try:
         # Process video with default settings
@@ -69,16 +69,6 @@ def configuration_examples():
     print(f"   - Max frames: {hq_config.sampling.max_frames}")
     print(f"   - Max pixels: {hq_config.processing.max_pixels}")
     
-    # VLLM configuration (if available)
-    print("🤖 VLLM Configuration:")
-    try:
-        vllm_config = get_vllm_config()
-        vllm_processor = VideoProcessor(vllm_config)
-        print(f"   - VLLM enabled: {vllm_config.vllm.enable_vllm}")
-        print(f"   - Model: {vllm_config.vllm.model_name}")
-        print(f"   - Max model length: {vllm_config.vllm.max_model_len}")
-    except Exception as e:
-        print(f"   - VLLM not available: {e}")
 
 
 def format_examples():
@@ -189,8 +179,8 @@ def main():
     print("\n💡 Tips:")
     print("   - Replace 'sample_video.mp4' with your actual video file")
     print("   - Check the configuration options for optimization")
-    print("   - Enable VLLM integration for serving capabilities")
 
 
 if __name__ == "__main__":
-    main() 
+    basic_video_processing()
+    # main() 

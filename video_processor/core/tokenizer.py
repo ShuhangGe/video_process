@@ -161,20 +161,7 @@ class VideoTokenizer:
             "recommendations": []
         }
         
-        # Check against VLLM configuration if available
-        if self.config.vllm.enable_vllm:
-            max_model_len = self.config.vllm.max_model_len
-            
-            if total_tokens > max_model_len * 0.8:  # 80% of max length as warning threshold
-                model_info["is_within_limits"] = False
-                model_info["recommendations"].append(
-                    f"Token count ({total_tokens}) approaching model limit ({max_model_len}). "
-                    "Consider reducing frame count or resolution."
-                )
-            
-            model_info["max_model_len"] = max_model_len
-            model_info["token_utilization"] = total_tokens / max_model_len
-        
+
         # General recommendations based on token count
         if total_tokens > 100000:
             model_info["recommendations"].append(
@@ -401,7 +388,7 @@ class VideoTokenizer:
             "tokens_per_patch": 1,  # Each patch becomes one token
             "patch_size": f"{self.image_factor}x{self.image_factor}",
             "supports_3d_encoding": True,
-            "max_sequence_length": self.config.vllm.max_model_len if self.config.vllm.enable_vllm else None,
+            "max_sequence_length": None,
         }
 
 
