@@ -115,29 +115,6 @@ class ProcessingConfig:
 
 
 @dataclass
-class CacheConfig:
-    """Configuration for caching system."""
-    
-    # Cache settings
-    enable_cache: bool = True
-    cache_dir: Optional[str] = None  # Default: ~/.cache/video_processor
-    max_cache_size: int = 10 * 1024 * 1024 * 1024  # 10GB default
-    
-    # Cache strategies
-    enable_memory_cache: bool = True
-    enable_disk_cache: bool = True
-    memory_cache_size: int = 1024  # Number of items
-    
-    # Cache invalidation
-    cache_ttl: int = 7 * 24 * 3600  # 7 days default
-    invalidate_on_config_change: bool = True
-    
-    # Performance tuning
-    async_cache_writes: bool = True
-    compression_level: int = 6  # 0-9, higher = more compression
-
-
-@dataclass
 class VLLMConfig:
     """Configuration for VLLM integration."""
     
@@ -246,7 +223,6 @@ class VideoProcessorConfig:
     backend: BackendConfig = field(default_factory=BackendConfig)
     sampling: SamplingConfig = field(default_factory=SamplingConfig) 
     processing: ProcessingConfig = field(default_factory=ProcessingConfig)
-    cache: CacheConfig = field(default_factory=CacheConfig)
     vllm: VLLMConfig = field(default_factory=VLLMConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
@@ -264,7 +240,6 @@ class VideoProcessorConfig:
     def __post_init__(self):
         """Post-initialization setup and validation."""
         self._setup_logging()
-        self._setup_cache_dir()
         self._validate_config()
     
     def _setup_logging(self):
@@ -279,13 +254,7 @@ class VideoProcessorConfig:
         if self.logging.debug_mode:
             logging.getLogger().setLevel(logging.DEBUG)
     
-    def _setup_cache_dir(self):
-        """Setup cache directory if not specified."""
-        if self.cache.cache_dir is None:
-            cache_dir = Path.home() / ".cache" / "video_processor"
-            cache_dir.mkdir(parents=True, exist_ok=True)
-            self.cache.cache_dir = str(cache_dir)
-    
+
     def _validate_config(self):
         """Validate configuration parameters."""
         # Validate sampling parameters
@@ -327,8 +296,6 @@ class VideoProcessorConfig:
             config_dict['sampling'] = convert_section(config_dict['sampling'], SamplingConfig)
         if 'processing' in config_dict:
             config_dict['processing'] = convert_section(config_dict['processing'], ProcessingConfig)
-        if 'cache' in config_dict:
-            config_dict['cache'] = convert_section(config_dict['cache'], CacheConfig)
         if 'vllm' in config_dict:
             config_dict['vllm'] = convert_section(config_dict['vllm'], VLLMConfig)
         if 'output' in config_dict:
@@ -396,17 +363,7 @@ class VideoProcessorConfig:
         """Disable VLLM integration."""
         self.vllm.enable_vllm = False
     
-    def enable_caching(self, **cache_kwargs):
-        """Enable caching with optional parameters."""
-        self.cache.enable_cache = True
-        for key, value in cache_kwargs.items():
-            if hasattr(self.cache, key):
-                setattr(self.cache, key, value)
-    
-    def disable_caching(self):
-        """Disable caching."""
-        self.cache.enable_cache = False
-    
+
     def set_device(self, device: str):
         """Set processing device."""
         self.device = device
@@ -417,14 +374,12 @@ class VideoProcessorConfig:
         """Apply memory optimization settings."""
         self.processing.enable_half_precision = True
         self.processing.max_batch_size = 4
-        self.cache.memory_cache_size = 512
         self.vllm.gpu_memory_utilization = 0.7
     
     def optimize_for_speed(self):
         """Apply speed optimization settings.""" 
         self.backend.priority = ["decord", "torchcodec", "torchvision"]
         self.processing.max_batch_size = 16
-        self.cache.async_cache_writes = True
         self.vllm.gpu_memory_utilization = 0.9
 
 

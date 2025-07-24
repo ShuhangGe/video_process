@@ -148,30 +148,6 @@ def token_calculation_example():
         print(f"   - Memory estimate: {token_info['memory_info']['total_memory_mb']:.1f} MB")
 
 
-def cache_example():
-    """Demonstrate caching functionality."""
-    print("\n=== Cache Example ===")
-    
-    config = get_default_config()
-    config.enable_caching()  # Enable caching
-    processor = VideoProcessor(config)
-    
-    # Sample video configuration
-    video_config = {
-        "video": "sample_video.mp4",
-        "nframes": 16,
-        "fps": 2.0
-    }
-    
-    # Check cache stats
-    cache_stats = processor.cache_system.get_stats()
-    print(f"📊 Cache Status:")
-    print(f"   - Enabled: {cache_stats['enabled']}")
-    if cache_stats['memory_cache']:
-        print(f"   - Memory cache size: {cache_stats['memory_cache']['size']}")
-    if cache_stats['disk_cache']:
-        print(f"   - Disk cache entries: {cache_stats['disk_cache']['entries']}")
-
 
 def performance_info():
     """Display performance and system information."""
@@ -207,7 +183,6 @@ def main():
     configuration_examples()
     format_examples()
     token_calculation_example()
-    cache_example()
     performance_info()
     
     print("\n✨ All examples completed!")
@@ -215,7 +190,6 @@ def main():
     print("   - Replace 'sample_video.mp4' with your actual video file")
     print("   - Check the configuration options for optimization")
     print("   - Enable VLLM integration for serving capabilities")
-    print("   - Use caching for better performance with repeated processing")
 
 
 if __name__ == "__main__":

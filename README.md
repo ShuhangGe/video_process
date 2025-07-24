@@ -8,7 +8,6 @@ A comprehensive, model-agnostic video processing pipeline for multimodal AI mode
 - **🎯 Smart Frame Sampling**: Intelligent sampling strategies (uniform, adaptive, keyframe, duration-based)
 - **📏 Smart Resizing**: Maintains aspect ratios while optimizing for model requirements
 - **🧮 Token Calculation**: Estimates token counts and memory requirements for different models
-- **💾 Advanced Caching**: Memory and disk caching with LRU eviction and compression
 - **📤 Multiple Output Formats**: Standard, HuggingFace, OpenAI, Streaming, and Raw formats
 - **🚀 VLLM Integration**: Optional integration for efficient serving and inference
 - **⚡ Performance Optimized**: Batch processing, memory management, and async operations
@@ -77,59 +76,55 @@ The video processor follows a modular pipeline architecture with a complete 8-st
 ```mermaid
 flowchart TD
     A[Video Input] --> B[Input Processing]
-    B --> C{Cache Check}
-    C -->|Hit| D[Return Cached Result]
-    C -->|Miss| E[Frame Extraction]
-    E --> F[Frame Processing]
-    F --> G[Token Calculation]
-    G --> H[Metadata Compilation]
-    H --> I[Quality Assessment]
-    I --> J[Cache Storage]
-    J --> K[Format Output]
-    K --> L[Final Result]
+    B --> C[Frame Extraction]
+    C --> D[Frame Processing]
+    D --> E[Token Calculation]
+    E --> F[Metadata Compilation]
+    F --> G[Quality Assessment]
+    G --> H[Format Output]
+    H --> I[Final Result]
     
     subgraph "Error Handling"
-        M[Error Detection]
-        N[Graceful Degradation]
-        O[Error Formatting]
+        J[Error Detection]
+        K[Graceful Degradation]
+        L[Error Formatting]
     end
     
     subgraph "Performance Monitoring"
-        P[Step Timing]
-        Q[Memory Tracking]
-        R[Cache Analytics]
+        M[Step Timing]
+        N[Memory Tracking]
+        O[Performance Analytics]
     end
     
     subgraph "Multi-Format Support"
-        S[Standard Format]
-        T[HuggingFace Format]
-        U[OpenAI Format]
-        V[Streaming Format]
-        W[Raw Format]
+        P[Standard Format]
+        Q[HuggingFace Format]
+        R[OpenAI Format]
+        S[Streaming Format]
+        T[Raw Format]
     end
     
-    K --> S
-    K --> T
-    K --> U
-    K --> V
-    K --> W
+    H --> P
+    H --> Q
+    H --> R
+    H --> S
+    H --> T
     
     style A fill:#e1f5fe
-    style L fill:#c8e6c9
-    style C fill:#fff3e0
-    style E fill:#f3e5f5
+    style I fill:#c8e6c9
+    style C fill:#f3e5f5
+    style D fill:#fff3e0
 ```
 
 ### 📋 Processing Steps
 
 1. **📥 Input Processing** - Validates and normalizes various input formats (files, URLs, base64, frame lists)
-2. **💾 Cache Check** - Intelligent caching with LRU eviction and hit/miss tracking
-3. **🎬 Frame Extraction** - Multi-backend video reading (TorchVision/Decord/TorchCodec) with automatic fallback
-4. **🖼️ Frame Processing** - Smart resizing, memory optimization, and quality control
-5. **🧮 Token Calculation** - Model-aware token counting and memory estimation
-6. **📋 Metadata Compilation** - Comprehensive processing information collection
-7. **💾 Cache Storage** - Async result caching for performance optimization
-8. **📤 Format Output** - Multi-format conversion for different frameworks and APIs
+2. **🎬 Frame Extraction** - Multi-backend video reading (TorchVision/Decord/TorchCodec) with automatic fallback
+3. **🖼️ Frame Processing** - Smart resizing, memory optimization, and quality control
+4. **🧮 Token Calculation** - Model-aware token counting and memory estimation
+5. **📋 Metadata Compilation** - Comprehensive processing information collection
+6. **✨ Quality Assessment** - Advanced frame quality evaluation and optimization recommendations
+7. **📤 Format Output** - Multi-format conversion for different frameworks and APIs
 
 ### Core Components
 
@@ -138,7 +133,6 @@ flowchart TD
 - **SmartSampler**: Intelligent frame sampling based on video characteristics  
 - **FrameProcessor**: Resizing and preprocessing with memory optimization
 - **VideoTokenizer**: Token count calculation and optimization
-- **CacheSystem**: LRU memory and disk caching for performance
 - **FormatHandler**: Multiple output format support
 
 ## 🔧 Configuration
@@ -167,12 +161,6 @@ config.processing.interpolation_mode = "bicubic"
 config.enable_vllm_integration(
     model_name="Qwen/Qwen2.5-VL-7B-Instruct",
     max_model_len=8192
-)
-
-# Enable caching
-config.enable_caching(
-    memory_cache_size=1024,
-    max_cache_size=5 * 1024 * 1024 * 1024  # 5GB
 )
 ```
 
@@ -226,16 +214,6 @@ server = processor.create_server(host="0.0.0.0", port=8000)
 - **TorchVision**: Reliable, built-in support
 - **Decord**: Fastest performance, multi-threading
 - **TorchCodec**: Best compatibility, FFmpeg-based
-
-### Caching System
-```python
-# Enable caching for better performance
-config.enable_caching()
-
-# Cache stats
-stats = processor.cache_system.get_stats()
-print(f"Cache hit rate: {stats['memory_cache']['hit_rate']:.2%}")
-```
 
 ### Memory Optimization
 ```python

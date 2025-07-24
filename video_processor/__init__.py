@@ -9,19 +9,23 @@ Main Features:
 - Smart frame sampling with configurable parameters
 - VLLM integration for efficient inference
 - Batch processing optimization
-- Caching system for performance
 - OpenAI-compatible API server
 - Multiple output formats
 """
 
-from .config import VideoProcessorConfig
+from .config import (
+    VideoProcessorConfig, 
+    get_default_config, 
+    get_fast_config, 
+    get_high_quality_config, 
+    get_vllm_config
+)
 from .core.video_input import VideoInputHandler
 from .core.frame_extractor import FrameExtractor
 from .core.smart_sampler import SmartSampler
 from .core.frame_processor import FrameProcessor
 from .core.tokenizer import VideoTokenizer
 from .utils.format_handler import FormatHandler
-from .utils.cache_system import CacheSystem
 
 try:
     from .vllm.vllm_integration import VLLMVideoProcessor
@@ -45,7 +49,12 @@ __all__ = [
     "FrameProcessor",
     "VideoTokenizer",
     "FormatHandler",
-    "CacheSystem",
+    
+    # Configuration functions
+    "get_default_config",
+    "get_fast_config", 
+    "get_high_quality_config",
+    "get_vllm_config",
     
     # VLLM components (if available)
     "VLLMVideoProcessor",
@@ -81,7 +90,6 @@ class VideoProcessor:
         self.frame_processor = FrameProcessor(self.config)
         self.tokenizer = VideoTokenizer(self.config)
         self.format_handler = FormatHandler(self.config)
-        self.cache_system = CacheSystem(self.config)
         
         # Initialize VLLM components if available
         if VLLM_AVAILABLE and self.config.vllm.enable_vllm:
@@ -114,7 +122,7 @@ class VideoProcessor:
         timing = {}
         
         try:
-            # Step 1: Process input and check cache
+            # Step 1: Process input
             logger.debug(f"Processing video input: {str(video_input)[:100]}...")
             input_start = time.time()
             
@@ -126,19 +134,7 @@ class VideoProcessor:
             video_config.update(kwargs)
             timing["input_processing"] = time.time() - input_start
             
-            # Check cache
-            cache_start = time.time()
-            cached_result = self.cache_system.get(video_config)
-            timing["cache_check"] = time.time() - cache_start
-            
-            if cached_result is not None:
-                logger.info("Cache hit - returning cached result")
-                timing["total_time"] = time.time() - start_time
-                timing["cache_hit"] = True
-                
-                # Update timing in cached result
-                cached_result.timing.update(timing)
-                return self.format_handler.convert_format(cached_result, output_format)
+
             
             # Step 2: Extract frames
             logger.debug("Extracting frames from video...")
@@ -187,7 +183,6 @@ class VideoProcessor:
             
             # Step 6: Create ProcessedVideo result
             timing["total_time"] = time.time() - start_time
-            timing["cache_hit"] = False
             
             # Quality assessment if configured
             quality_info = None
@@ -198,10 +193,10 @@ class VideoProcessor:
                 quality_info = advanced_processor.assess_frame_quality(processed_tensor)
                 timing["quality_assessment"] = time.time() - quality_start
             
-            # Cache information
+            # Processing information
             cache_info = {
                 "cached": False,
-                "cache_key": self.cache_system._generate_cache_key(video_config) if hasattr(self.cache_system, '_generate_cache_key') else None
+                "cache_key": None
             }
             
             # Create ProcessedVideo object
@@ -215,17 +210,14 @@ class VideoProcessor:
                 cache_info=cache_info
             )
             
-            # Step 7: Cache the result (async if configured)
-            cache_save_start = time.time()
-            self.cache_system.put(video_config, processed_video)
-            timing["cache_save"] = time.time() - cache_save_start
+
             
             logger.info(
                 f"Video processing completed: {processed_tensor.shape} in {timing['total_time']:.3f}s, "
                 f"tokens: {token_info['total_tokens']}"
             )
             
-            # Step 8: Format output
+            # Step 7: Format output
             format_start = time.time()
             formatted_result = self.format_handler.format_output(
                 video_tensor=processed_tensor,
@@ -322,7 +314,6 @@ class VideoProcessor:
         return {
             "config": {
                 "vllm_enabled": self.config.vllm.enable_vllm,
-                "cache_enabled": self.config.cache.enable_cache,
                 "strict_mode": self.config.strict_mode,
                 "device": self.config.device,
                 "dtype": self.config.dtype,
@@ -333,7 +324,6 @@ class VideoProcessor:
                 "batch_processor": self.batch_processor is not None,
             },
             "backends": self.frame_extractor.get_backend_info(),
-            "cache_stats": self.cache_system.get_stats(),
             "format_info": self.format_handler.get_format_info(),
             "tokenizer_info": self.tokenizer.get_tokenizer_info(),
         }
