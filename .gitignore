@@ -69,7 +69,8 @@ processed_frames/
 extracted_frames/
 output/
 results/
-tt_videos/
+tt_videos/*
+!tt_videos/
 
 # Configuration files with sensitive data
 config.ini
