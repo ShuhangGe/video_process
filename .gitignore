@@ -74,3 +74,4 @@ results/
 config.ini
 secrets.json
 .secrets 
+*.json
