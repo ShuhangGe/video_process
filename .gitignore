@@ -69,9 +69,9 @@ processed_frames/
 extracted_frames/
 output/
 results/
+videos/
 
 # Configuration files with sensitive data
 config.ini
 secrets.json
 .secrets 
-*.json
