@@ -1,0 +1,26 @@
+# TikTok Downloader with Audio Transcription Requirements
+
+# Core video downloading
+yt-dlp>=2023.12.30
+
+# Audio processing
+ffmpeg-python>=0.2.0
+
+# AI/ML for transcription
+torch>=2.0.0
+transformers>=4.35.0
+accelerate>=0.24.0
+
+# Pyannote audio for speaker diarization
+pyannote.audio>=3.1.0
+
+# Audio processing utilities
+librosa>=0.10.0
+soundfile>=0.12.0
+numpy>=1.24.0
+
+# Optional: for better audio quality
+noisereduce>=3.0.0
+
+# Core Python utilities (usually included)
+pathlib2>=2.3.7

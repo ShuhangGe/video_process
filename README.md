@@ -1,9 +1,13 @@
-# Video Processor
+# Video Processing Pipeline
 
-A comprehensive, model-agnostic video processing pipeline for multimodal AI models with configurable parameters and multiple output formats.
+A comprehensive video processing toolkit that combines multiple video processing capabilities including model-agnostic video processing for multimodal AI models and specialized TikTok video downloading with audio transcription.
 
-## ✨ Features
+## 🏗️ Project Components
 
+### 1. 🎬 **Video Processor** (`video_processor/`)
+A model-agnostic video processing pipeline designed for multimodal AI models with configurable parameters and multiple output formats.
+
+**Key Features:**
 - **🔧 Multi-backend Video Reading**: Supports TorchVision, Decord, and TorchCodec with automatic fallback
 - **🎯 Smart Frame Sampling**: Intelligent sampling strategies (uniform, adaptive, keyframe, duration-based)
 - **📏 Smart Resizing**: Maintains aspect ratios while optimizing for model requirements
@@ -11,275 +15,278 @@ A comprehensive, model-agnostic video processing pipeline for multimodal AI mode
 - **📤 Multiple Output Formats**: Standard, HuggingFace, OpenAI, Streaming, and Raw formats
 - **⚡ Performance Optimized**: Batch processing, memory management, and async operations
 
+### 2. 📱 **TikTok Video Downloader with Transcription** (`tt_video_download/`)
+Enhanced TikTok video downloader that extracts audio and provides automatic speech-to-text transcription with speaker identification.
+
+**Key Features:**
+- ✅ **Video Downloading**: Download TikTok videos from URLs with metadata
+- 🎵 **Audio Extraction**: Extract audio from videos using FFmpeg
+- 🎤 **Speech Recognition**: Convert speech to text using Whisper Large-v3 Turbo
+- 👥 **Speaker Diarization**: Identify different speakers using Pyannote
+- ⏰ **Timestamp Alignment**: Precise timing for each speech segment
+- 📊 **Enhanced Metadata**: Rich JSON output with transcription data
+
 ## 🚀 Quick Start
+
+### Prerequisites
+- Python 3.8+
+- FFmpeg (for audio processing)
+- CUDA compatible GPU (optional, for faster processing)
 
 ### Installation
 
+1. **Clone the repository:**
 ```bash
-# Clone the repository
 git clone <repository-url>
 cd video_process
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Optional: Install video backends for better performance
-pip install decord  # Fast video reading
-pip install torchcodec  # FFmpeg-based reading
 ```
 
-### Basic Usage
+2. **Install dependencies:**
+```bash
+pip install -r requirements.txt
+```
+
+3. **Install FFmpeg:**
+```bash
+# Ubuntu/Debian
+sudo apt update && sudo apt install ffmpeg
+
+# macOS with Homebrew
+brew install ffmpeg
+
+# Or using conda
+conda install -c conda-forge ffmpeg
+```
+
+## 📖 Usage
+
+### Video Processor
 
 ```python
 from video_processor import VideoProcessor, get_default_config
 
-# Initialize processor
+# Initialize with default configuration
 config = get_default_config()
 processor = VideoProcessor(config)
 
-# Process a video
-result = processor.process("path/to/video.mp4")
+# Process a single video
+result = processor.process_video("path/to/video.mp4")
 
-print(f"Processed {result.metadata['num_frames']} frames")
-print(f"Output shape: {result.frames.shape}")
-print(f"Total tokens: {result.token_info['total_tokens']}")
+# Process multiple videos
+results = processor.process_videos_batch([
+    "video1.mp4", 
+    "video2.mp4"
+])
 ```
 
-### Configuration Examples
-
+**Configuration Options:**
 ```python
-from video_processor.config import get_fast_config, get_high_quality_config
+from video_processor import get_fast_config, get_high_quality_config
 
-# Fast processing (lower quality, higher speed)
+# For fast processing
 fast_config = get_fast_config()
-fast_processor = VideoProcessor(fast_config)
 
-# High quality processing
+# For high quality output
 hq_config = get_high_quality_config()
-hq_processor = VideoProcessor(hq_config)
+
+# Custom configuration
+config = VideoProcessorConfig(
+    target_fps=2.0,
+    max_frames=64,
+    target_size=(224, 224),
+    backend_preference=['torchvision', 'decord']
+)
 ```
 
-## 📚 Architecture
+### TikTok Video Downloader
 
-The video processor follows a modular pipeline architecture with a complete 8-step processing workflow:
+```bash
+cd tt_video_download
 
-### 🔄 Complete Processing Pipeline
+# Setup (first time only)
+python setup_transcription.py
 
-```mermaid
-flowchart TD
-    A[Video Input] --> B[Input Processing]
-    B --> C[Frame Extraction]
-    C --> D[Frame Processing]
-    D --> E[Token Calculation]
-    E --> F[Metadata Compilation]
-    F --> G[Quality Assessment]
-    G --> H[Format Output]
-    H --> I[Final Result]
-    
-    subgraph "Error Handling"
-        J[Error Detection]
-        K[Graceful Degradation]
-        L[Error Formatting]
-    end
-    
-    subgraph "Performance Monitoring"
-        M[Step Timing]
-        N[Memory Tracking]
-        O[Performance Analytics]
-    end
-    
-    subgraph "Multi-Format Support"
-        P[Standard Format]
-        Q[HuggingFace Format]
-        R[OpenAI Format]
-        S[Streaming Format]
-        T[Raw Format]
-    end
-    
-    H --> P
-    H --> Q
-    H --> R
-    H --> S
-    H --> T
-    
-    style A fill:#e1f5fe
-    style I fill:#c8e6c9
-    style C fill:#f3e5f5
-    style D fill:#fff3e0
+# Create URL file
+echo "https://www.tiktok.com/@username/video/1234567890" > urls.txt
+
+# Run downloader with transcription
+conda activate python12  # or python11
+python get_tt.py
 ```
 
-### 📋 Processing Steps
+## 📁 Project Structure
 
-1. **📥 Input Processing** - Validates and normalizes various input formats (files, URLs, base64, frame lists)
-2. **🎬 Frame Extraction** - Multi-backend video reading (TorchVision/Decord/TorchCodec) with automatic fallback
-3. **🖼️ Frame Processing** - Smart resizing, memory optimization, and quality control
-4. **🧮 Token Calculation** - Model-aware token counting and memory estimation
-5. **📋 Metadata Compilation** - Comprehensive processing information collection
-6. **✨ Quality Assessment** - Advanced frame quality evaluation and optimization recommendations
-7. **📤 Format Output** - Multi-format conversion for different frameworks and APIs
-
-### Core Components
-
-- **VideoInputHandler**: Handles various input formats (files, URLs, base64, frame lists)
-- **FrameExtractor**: Multi-backend video reading with automatic fallback
-- **SmartSampler**: Intelligent frame sampling based on video characteristics  
-- **FrameProcessor**: Resizing and preprocessing with memory optimization
-- **VideoTokenizer**: Token count calculation and optimization
-- **FormatHandler**: Multiple output format support
+```
+video_process/
+├── video_processor/          # Main video processing pipeline
+│   ├── __init__.py           # Main API
+│   ├── config.py             # Configuration management
+│   ├── core/                 # Core processing components
+│   ├── backends/             # Video reading backends
+│   ├── utils/                # Utility functions
+│   └── examples/             # Usage examples
+├── tt_video_download/        # TikTok downloader with transcription
+│   ├── get_tt.py             # Main downloader script
+│   ├── setup_transcription.py # Setup script
+│   ├── requirements.txt      # Specific dependencies
+│   └── README.md             # Detailed documentation
+├── read_video.py             # Core video reading functionality
+├── video_process_plan.md     # Technical architecture document
+├── requirements.txt          # Main project dependencies
+└── README.md                 # This file
+```
 
 ## 🔧 Configuration
 
-The system uses a comprehensive configuration system:
+### Video Processor Configuration
+
+The video processor supports multiple configuration presets:
+
+- **Default**: Balanced performance and quality
+- **Fast**: Optimized for speed
+- **High Quality**: Optimized for output quality
+
+Custom configurations can be created by modifying:
+- Frame sampling parameters
+- Resizing strategies
+- Backend preferences
+- Token calculation settings
+
+### TikTok Downloader Configuration
+
+Configure the TikTok downloader in `tt_video_download/get_tt.py`:
 
 ```python
-from video_processor.config import VideoProcessorConfig
+# Basic settings
+urls_file = "urls.txt"
+output_directory = "/path/to/output"
+enable_transcription = True  # Set to False to skip audio processing
 
-config = VideoProcessorConfig()
-
-# Backend configuration
-config.backend.priority = ["decord", "torchcodec", "torchvision"]
-config.backend.force_backend = "decord"  # Force specific backend
-
-# Sampling configuration  
-config.sampling.target_fps = 2.0
-config.sampling.max_frames = 64
-config.sampling.strategy = "adaptive"
-
-# Processing configuration
-config.processing.max_pixels = 1024 * 28 * 28
-config.processing.interpolation_mode = "bicubic"
+# Advanced settings (in the script)
+whisper_model = "openai/whisper-large-v3-turbo"
+pyannote_model = "pyannote/speaker-diarization-3.1"
 ```
 
-## 📤 Output Formats
+## 📊 Output Formats
 
-### Standard Format (Default)
-```python
-result = processor.process(video, output_format="standard")
-# Returns ProcessedVideo dataclass with frames, metadata, timing, token_info
-```
+### Video Processor Outputs
 
-### HuggingFace Format
-```python
-result = processor.process(video, output_format="huggingface")  
-# Returns dict compatible with HuggingFace transformers
-# Keys: pixel_values, image_grid_thw, video_grid_thw
-```
+- **Standard**: Basic tensor format
+- **HuggingFace**: Compatible with HuggingFace models
+- **OpenAI**: Compatible with OpenAI API format
+- **Streaming**: For real-time processing
+- **Raw**: Unprocessed frames
 
-### OpenAI Format
-```python
-result = processor.process(video, output_format="openai")
-# Returns dict with base64 encoded frames for API consumption
-```
+### TikTok Downloader Outputs
 
-### Streaming Format
-```python
-for chunk in processor.process(video, output_format="streaming"):
-    # Process video in chunks for large files
-    process_chunk(chunk["frames"])
-```
+For each video, the following files are generated:
+- `username_videoid.mp4` - Original video file
+- `username_videoid.wav` - Extracted audio (if transcription enabled)
+- `username_videoid.json` - Metadata including transcription data
 
-## ⚡ Performance Features
+## 🎯 Use Cases
 
-### Multi-Backend Support
-- **TorchVision**: Reliable, built-in support
-- **Decord**: Fastest performance, multi-threading
-- **TorchCodec**: Best compatibility, FFmpeg-based
+### Video Processor
+- **Multimodal AI Training**: Prepare video data for model training
+- **Video Analysis**: Extract and analyze video content
+- **Batch Processing**: Process large video datasets efficiently
+- **Model Evaluation**: Test models on standardized video inputs
 
-### Memory Optimization
-```python
-# Optimize for memory constraints
-config.optimize_for_memory()
+### TikTok Downloader
+- 📚 **Content Analysis**: Analyze TikTok trends and topics
+- 📝 **Research**: Academic studies on social media content
+- 🎬 **Content Creation**: Extract quotes and highlights
+- 📊 **Social Listening**: Monitor brand mentions and sentiment
+- ♿ **Accessibility**: Generate captions for hearing impaired
 
-# Estimate memory usage
-memory_info = processor.frame_processor.estimate_memory_usage(video_tensor, 224, 224)
-print(f"Peak memory: {memory_info['peak_memory_mb']:.1f} MB")
-```
+## ⚡ Performance
 
-## 📊 Token Calculation
+### Video Processor
+- **GPU Acceleration**: Automatic CUDA/MPS detection
+- **Batch Processing**: Efficient multi-video processing
+- **Memory Management**: Optimized memory usage
+- **Backend Fallback**: Automatic fallback between video backends
 
-The system provides detailed token analysis:
+### TikTok Transcription
+- **GPU Processing**: 2-3x real-time on RTX 4090
+- **Apple Silicon**: Optimized MPS backend support
+- **CPU Fallback**: ~0.5x real-time processing
+- **Model Caching**: First-run model downloads (~1-2GB)
 
-```python
-token_info = processor.tokenizer.calculate_tokens(video_tensor, video_config)
+## 🛠️ Development
 
-print(f"Total tokens: {token_info['total_tokens']}")
-print(f"Grid dimensions: {token_info['grid_thw']}")  
-print(f"Memory estimate: {token_info['memory_info']['total_memory_mb']:.1f} MB")
-
-# Optimize for token limits
-optimized_config = processor.tokenizer.optimize_for_token_limit(
-    video_config, target_tokens=4096
-)
-```
-
-## 🔧 Advanced Usage
-
-### Batch Processing
-```python
-# Process multiple videos
-videos = ["video1.mp4", "video2.mp4", "video3.mp4"]
-results = processor.process_batch(videos)
-
-# Batch token calculation
-batch_info = processor.tokenizer.calculate_batch_tokens(
-    video_tensors, video_configs
-)
-```
-
-### Custom Sampling Strategies
-```python
-# Configure adaptive sampling
-config.sampling.strategy = "adaptive"
-config.sampling.scene_change_threshold = 0.3
-config.sampling.short_video_threshold = 10.0
-
-# Duration-based sampling
-config.sampling.strategy = "duration"
-config.sampling.base_interval = 4.0
-```
-
-### Quality Assessment
-```python
-from video_processor.core.frame_processor import AdvancedFrameProcessor
-
-advanced_processor = AdvancedFrameProcessor(config)
-quality_info = advanced_processor.assess_frame_quality(video_tensor)
-
-print(f"Overall quality: {quality_info['overall_quality']:.3f}")
-print(f"Sharpness: {quality_info['sharpness']:.3f}")
-```
-
-## 🧪 Examples
-
-Run the provided examples:
-
-```bash
-# Basic usage example
-python video_processor/examples/basic_usage.py
-
-# Backend benchmark (coming soon)
-python video_processor/examples/benchmark_backends.py
-```
-
-## 🤝 Contributing
-
+### Contributing
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+2. Create a feature branch
+3. Make your changes
+4. Add tests if applicable
+5. Submit a pull request
+
+### Running Tests
+```bash
+# Run video processor tests
+python -m pytest video_processor/tests/
+
+# Run TikTok downloader tests
+cd tt_video_download && python -m pytest tests/
+```
+
+## 📋 Dependencies
+
+### Core Dependencies
+- **torch**: PyTorch for tensor operations
+- **torchvision**: Video and image processing
+- **PIL**: Image processing
+- **numpy**: Numerical operations
+- **requests**: HTTP requests
+
+### Optional Dependencies
+- **decord**: Alternative video backend
+- **av**: PyAV video processing
+- **ffmpeg-python**: Audio processing
+- **transformers**: Whisper model support
+- **pyannote.audio**: Speaker diarization
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+1. **Video Loading Errors**:
+   - Install multiple backends: `pip install decord av`
+   - Check video format compatibility
+   - Verify file paths and permissions
+
+2. **GPU Memory Issues**:
+   - Reduce batch size or frame count
+   - Use CPU fallback if necessary
+   - Monitor GPU memory usage
+
+3. **TikTok Download Issues**:
+   - Update yt-dlp: `pip install -U yt-dlp`
+   - Check network connectivity
+   - Verify URL format
+
+4. **Transcription Issues**:
+   - Activate conda environment: `conda activate python12`
+   - Accept HuggingFace agreements for Pyannote
+   - Check FFmpeg installation
+
+### Performance Optimization
+- Use GPU when available
+- Enable model caching
+- Batch process multiple videos
+- Adjust configuration for your use case
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is for educational and research purposes. Please respect:
+- Content creators' rights
+- Platform terms of service
+- Applicable laws and regulations
 
-## 🙏 Acknowledgments
+## 🤝 Support
 
-- Based on Qwen2.5-VL video processing implementation
-- Inspired by multimodal AI model requirements
-
-## 📞 Support
-
-- Create an issue for bug reports or feature requests
-- Check examples for common usage patterns
-- Review configuration options for optimization tips
+- 📖 Check component-specific documentation in subdirectories
+- 🐛 Report issues via GitHub Issues
+- 💡 Suggest features via GitHub Discussions
+- 📧 Contact maintainers for collaboration
