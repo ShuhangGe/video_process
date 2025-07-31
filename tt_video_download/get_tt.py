@@ -2,17 +2,21 @@ import yt_dlp
 import os
 import logging
 import json
-import subprocess
-import ffmpeg
+import time
 from datetime import datetime
-from pathlib import Path
+
+# FFmpeg for audio extraction
+try:
+    import ffmpeg
+except ImportError:
+    print("Error: ffmpeg-python package not found. Please install with: pip install ffmpeg-python")
+    exit(1)
 
 # Audio transcription imports
 import torch
 from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
 from pyannote.audio import Pipeline
-from pyannote.core import Annotation, Segment
-import numpy as np
+from pyannote.core import Annotation
 
 # Set up logging
 logging.basicConfig(
@@ -24,6 +28,196 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+# Timing utility classes
+class BatchTimingTracker:
+    def __init__(self):
+        self.all_video_times = []
+        self.step_totals = {}
+        self.step_counts = {}
+        
+    def add_video_timing(self, step_times: dict, total_time: float):
+        """Add timing data from a single video"""
+        self.all_video_times.append({
+            'step_times': step_times.copy(),
+            'total_time': total_time
+        })
+        
+        # Update step totals for averaging
+        for step, duration in step_times.items():
+            if step not in self.step_totals:
+                self.step_totals[step] = 0
+                self.step_counts[step] = 0
+            self.step_totals[step] += duration
+            self.step_counts[step] += 1
+    
+    def get_averages(self) -> dict:
+        """Calculate average times for each step"""
+        if not self.all_video_times:
+            return {}
+            
+        averages = {}
+        for step in self.step_totals:
+            averages[step] = self.step_totals[step] / self.step_counts[step]
+        
+        # Calculate average total time
+        total_times = [video['total_time'] for video in self.all_video_times]
+        avg_total = sum(total_times) / len(total_times)
+        
+        return {
+            'step_averages': averages,
+            'avg_total_time': avg_total,
+            'video_count': len(self.all_video_times),
+            'total_times': total_times
+        }
+    
+    def log_batch_summary(self):
+        """Log comprehensive batch timing summary"""
+        if not self.all_video_times:
+            logger.info("No timing data available for batch summary")
+            return
+            
+        averages = self.get_averages()
+        total_times = averages['total_times']
+        
+        logger.info(f"\n📈 BATCH TIMING SUMMARY ({averages['video_count']} videos)")
+        logger.info(f"{'='*70}")
+        logger.info(f"{'Step':<25} {'Current Avg':<12} {'Min':<8} {'Max':<8} {'Range':<8}")
+        logger.info(f"{'-'*70}")
+        
+        # Calculate min/max for each step across all videos
+        for step in averages['step_averages']:
+            step_times = []
+            for video in self.all_video_times:
+                if step in video['step_times']:
+                    step_times.append(video['step_times'][step])
+            
+            if step_times:
+                avg_time = averages['step_averages'][step]
+                min_time = min(step_times)
+                max_time = max(step_times)
+                range_time = max_time - min_time
+                
+                logger.info(f"{step:<25} {avg_time:>8.2f}s    {min_time:>5.2f}s  {max_time:>5.2f}s  {range_time:>5.2f}s")
+        
+        logger.info(f"{'-'*70}")
+        
+        # Total time statistics
+        min_total = min(total_times)
+        max_total = max(total_times)
+        range_total = max_total - min_total
+        
+        logger.info(f"{'TOTAL TIME':<25} {averages['avg_total_time']:>8.2f}s    {min_total:>5.2f}s  {max_total:>5.2f}s  {range_total:>5.2f}s")
+        logger.info(f"{'='*70}")
+        
+        # Additional statistics
+        logger.info(f"📊 Performance Statistics:")
+        logger.info(f"   • Videos processed: {averages['video_count']}")
+        logger.info(f"   • Average per video: {averages['avg_total_time']:.2f}s")
+        logger.info(f"   • Fastest video: {min_total:.2f}s")
+        logger.info(f"   • Slowest video: {max_total:.2f}s")
+        logger.info(f"   • Total batch time: {sum(total_times):.2f}s")
+        
+        # Identify bottlenecks
+        if averages['step_averages']:
+            slowest_step = max(averages['step_averages'].items(), key=lambda x: x[1])
+            fastest_step = min(averages['step_averages'].items(), key=lambda x: x[1])
+            logger.info(f"   • Slowest step: {slowest_step[0]} ({slowest_step[1]:.2f}s avg)")
+            logger.info(f"   • Fastest step: {fastest_step[0]} ({fastest_step[1]:.2f}s avg)")
+
+class StepTimer:
+    def __init__(self, batch_tracker: BatchTimingTracker = None):
+        self.step_times = {}
+        self.start_time = None
+        self.batch_tracker = batch_tracker
+        
+    def start_step(self, step_name: str):
+        """Start timing a step"""
+        self.start_time = time.time()
+        logger.info(f"⏱️  Starting: {step_name}")
+        
+    def end_step(self, step_name: str):
+        """End timing a step and log duration"""
+        if self.start_time:
+            duration = time.time() - self.start_time
+            self.step_times[step_name] = duration
+            
+            # Show current time and average if available
+            avg_info = ""
+            if self.batch_tracker:
+                averages = self.batch_tracker.get_averages()
+                if step_name in averages.get('step_averages', {}):
+                    avg_time = averages['step_averages'][step_name]
+                    diff = duration - avg_time
+                    diff_str = f"+{diff:.2f}s" if diff > 0 else f"{diff:.2f}s"
+                    avg_info = f" | avg: {avg_time:.2f}s ({diff_str})"
+            
+            logger.info(f"✅ Completed: {step_name} ({duration:.2f}s{avg_info})")
+            self.start_time = None
+            return duration
+        return 0
+        
+    def get_summary(self) -> dict:
+        """Get timing summary"""
+        total_time = sum(self.step_times.values())
+        return {
+            'step_times': self.step_times,
+            'total_time': total_time,
+            'step_percentages': {step: (time/total_time)*100 for step, time in self.step_times.items()} if total_time > 0 else {}
+        }
+        
+    def log_summary(self, video_title: str = "Unknown"):
+        """Log detailed timing summary with averages"""
+        summary = self.get_summary()
+        logger.info(f"\n📊 TIMING SUMMARY for: {video_title}")
+        logger.info(f"{'='*80}")
+        
+        # Show current times with averages if available
+        avg_data = {}
+        if self.batch_tracker:
+            avg_data = self.batch_tracker.get_averages()
+        
+        logger.info(f"{'Step':<25} {'Current':<10} {'Average':<10} {'Difference':<12} {'%':<6}")
+        logger.info(f"{'-'*80}")
+        
+        for step, duration in summary['step_times'].items():
+            percentage = summary['step_percentages'].get(step, 0)
+            current_str = f"{duration:.2f}s"
+            
+            if step in avg_data.get('step_averages', {}):
+                avg_time = avg_data['step_averages'][step]
+                diff = duration - avg_time
+                avg_str = f"{avg_time:.2f}s"
+                diff_str = f"+{diff:.2f}s" if diff >= 0 else f"{diff:.2f}s"
+                diff_color = "↑" if diff > 0 else "↓" if diff < 0 else "="
+            else:
+                avg_str = "N/A"
+                diff_str = "N/A"
+                diff_color = ""
+            
+            logger.info(f"{step:<25} {current_str:<10} {avg_str:<10} {diff_str:<11} {diff_color} {percentage:>4.1f}%")
+            
+        logger.info(f"{'-'*80}")
+        
+        # Total time comparison
+        total_str = f"{summary['total_time']:.2f}s"
+        if 'avg_total_time' in avg_data:
+            avg_total = avg_data['avg_total_time']
+            total_diff = summary['total_time'] - avg_total
+            total_avg_str = f"{avg_total:.2f}s"
+            total_diff_str = f"+{total_diff:.2f}s" if total_diff >= 0 else f"{total_diff:.2f}s"
+            total_color = "↑" if total_diff > 0 else "↓" if total_diff < 0 else "="
+        else:
+            total_avg_str = "N/A"
+            total_diff_str = "N/A"
+            total_color = ""
+            
+        logger.info(f"{'TOTAL TIME':<25} {total_str:<10} {total_avg_str:<10} {total_diff_str:<11} {total_color} 100.0%")
+        logger.info(f"{'='*80}")
+        
+        # Add to batch tracker
+        if self.batch_tracker:
+            self.batch_tracker.add_video_timing(self.step_times, summary['total_time'])
 
 class WhisperAudioTranscriber():
     def __init__(self, model_name="openai/whisper-large-v3-turbo"):
@@ -205,7 +399,7 @@ def extract_audio(video_path: str, audio_path: str) -> bool:
         logger.error(f"Failed to extract audio from {video_path}: {str(e)}")
         return False
 
-def transcribe_audio(audio_path: str, auth_token: str = None) -> dict:
+def transcribe_audio(audio_path: str, auth_token: str = None, timer: StepTimer = None) -> dict:
     """
     Transcribe audio using Whisper + Pyannote pipeline
     
@@ -220,11 +414,15 @@ def transcribe_audio(audio_path: str, auth_token: str = None) -> dict:
         logger.info(f"🎯 Starting transcription pipeline for: {audio_path}")
         
         # Initialize transcriber and diarizer
+        if timer: timer.start_step("Model Loading")
         transcriber = WhisperAudioTranscriber()
+        if timer: timer.end_step("Model Loading")
         
         # Perform transcription
+        if timer: timer.start_step("Whisper Transcription")
         logger.info("🎤 Running Whisper transcription...")
         full_transcription, transcription_segments = transcriber.transcribe(audio_path)
+        if timer: timer.end_step("Whisper Transcription")
         
         if not full_transcription:
             logger.error("Whisper transcription failed")
@@ -237,18 +435,22 @@ def transcribe_audio(audio_path: str, auth_token: str = None) -> dict:
         aligned_segments = []
         
         try:
+            if timer: timer.start_step("Speaker Diarization")
             logger.info("🎯 Running Pyannote diarization...")
             diarizer = PyannoteAudioDiarizer(auth_token=auth_token)
             diarization_result = diarizer.diarize(audio_path)
+            if timer: timer.end_step("Speaker Diarization")
             
             if diarization_result:
                 # Align transcription with diarization
+                if timer: timer.start_step("Alignment")
                 logger.info("🔗 Aligning transcription with speaker segments...")
                 aligner = AudioAligner()
                 aligned_segments = aligner.align_transcription_with_diarization(
                     transcription_segments, diarization_result
                 )
                 logger.info(f"✅ Alignment completed: {len(aligned_segments)} segments")
+                if timer: timer.end_step("Alignment")
             
         except Exception as e:
             logger.warning(f"Diarization failed (transcription will continue without speaker info): {str(e)}")
@@ -349,35 +551,7 @@ def save_video_description(video_info: dict, description_file: str, url: str, tr
     except Exception as e:
         logger.error(f"Failed to save description file {description_file}: {str(e)}")
 
-def activate_conda_environment():
-    """
-    Activate the conda environment for audio processing
-    """
-    try:
-        # Try to activate the preferred conda environment
-        env_name = "python12"  # Primary choice
-        result = subprocess.run(
-            f"source ~/miniconda3/etc/profile.d/conda.sh && conda activate {env_name}",
-            shell=True, capture_output=True, text=True
-        )
-        
-        if result.returncode != 0:
-            # Fallback to alternative environment
-            env_name = "python11"
-            result = subprocess.run(
-                f"source ~/miniconda3/etc/profile.d/conda.sh && conda activate {env_name}",
-                shell=True, capture_output=True, text=True
-            )
-        
-        if result.returncode == 0:
-            logger.info(f"🐍 Conda environment '{env_name}' activated")
-        else:
-            logger.warning(f"Could not activate conda environment. Proceeding with system Python.")
-            
-    except Exception as e:
-        logger.warning(f"Conda activation failed: {str(e)}. Proceeding with system Python.")
-
-def download_tiktok(url: str, output_dir: str = ".", video_number: int = None, total_videos: int = None, enable_transcription: bool = True):
+def download_tiktok(url: str, output_dir: str = ".", video_number: int = None, total_videos: int = None, enable_transcription: bool = True, show_timing: bool = True, batch_tracker: BatchTimingTracker = None):
     """
     Download a single TikTok video
     
@@ -386,9 +560,16 @@ def download_tiktok(url: str, output_dir: str = ".", video_number: int = None, t
         output_dir: Output directory for downloads
         video_number: Current video number for progress tracking
         total_videos: Total number of videos for progress tracking
+        enable_transcription: Whether to enable audio transcription
+        show_timing: Whether to show detailed timing information
     """
+    # Initialize timer with batch tracker
+    timer = StepTimer(batch_tracker) if show_timing else None
+    video_start_time = time.time()
+    
     try:
         # Extract user and video info from URL
+        if timer: timer.start_step("URL Parsing & Setup")
         url_parts = url.split('/')
         user_name = url_parts[3][1:]  # Remove @ symbol
         video_id = url_parts[-1]
@@ -407,23 +588,36 @@ def download_tiktok(url: str, output_dir: str = ".", video_number: int = None, t
         output_filename = f'{save_path}/{base_filename}.mp4'
         description_filename = f'{save_path}/{base_filename}.json'
         audio_filename = f'{save_path}/{base_filename}.wav'
+        if timer: timer.end_step("URL Parsing & Setup")
         
-        # Skip if video, description, and audio files already exist
-        if (os.path.exists(output_filename) and 
-            os.path.exists(description_filename) and 
-            (not enable_transcription or os.path.exists(audio_filename))):
+        # Check if files already exist
+        if timer: timer.start_step("File Existence Check")
+        files_exist = (os.path.exists(output_filename) and 
+                      os.path.exists(description_filename) and 
+                      (not enable_transcription or os.path.exists(audio_filename)))
+        video_only = os.path.exists(output_filename) and not os.path.exists(description_filename)
+        if timer: timer.end_step("File Existence Check")
+        
+        # Skip if all required files already exist
+        if files_exist:
             logger.info(f"Files already exist, skipping: {output_filename}")
+            if timer:
+                total_time = time.time() - video_start_time
+                logger.info(f"⚡ Skipped in {total_time:.2f}s (files exist)")
             return True
         
-        # If only video exists but not description, we'll re-download to get description
-        if os.path.exists(output_filename) and not os.path.exists(description_filename):
+        # If only video exists but not description, extract info without re-downloading
+        if video_only:
+            if timer: timer.start_step("Info Extraction Only")
             logger.info(f"Video exists but description missing, extracting info for: {output_filename}")
-            # Extract info without downloading to create description file
             ydl_opts_info = {'quiet': True, 'no_warnings': True}
             with yt_dlp.YoutubeDL(ydl_opts_info) as ydl:
                 info = ydl.extract_info(url, download=False)
                 save_video_description(info, description_filename, url)
                 logger.info(f"📝 Description created for existing video")
+                if timer: 
+                    timer.end_step("Info Extraction Only")
+                    timer.log_summary("Info extraction only")
                 return True
         
         ydl_opts = {
@@ -435,37 +629,48 @@ def download_tiktok(url: str, output_dir: str = ".", video_number: int = None, t
             # 'postprocessors': [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}],
         }
         
+        if timer: timer.start_step("Video Download")
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             title = info.get('title', 'Unknown Title')
+        if timer: timer.end_step("Video Download")
             
-            # Process audio transcription if enabled
-            transcription_data = {}
-            if enable_transcription:
-                try:
-                    # Activate conda environment for audio processing
-                    activate_conda_environment()
+        # Process audio transcription if enabled
+        transcription_data = {}
+        if enable_transcription:
+            try:
+                # Extract audio from video
+                if timer: timer.start_step("Audio Extraction")
+                audio_success = extract_audio(output_filename, audio_filename)
+                if timer: timer.end_step("Audio Extraction")
+                
+                if audio_success:
+                    # Transcribe audio with timing
+                    transcription_data = transcribe_audio(audio_filename, timer=timer)
                     
-                    # Extract audio from video
-                    if extract_audio(output_filename, audio_filename):
-                        # Transcribe audio
-                        transcription_data = transcribe_audio(audio_filename)
-                        
-                        if transcription_data:
-                            logger.info(f"📝 Transcription completed for: {title}")
-                        else:
-                            logger.warning(f"Transcription failed for: {title}")
+                    if transcription_data:
+                        logger.info(f"📝 Transcription completed for: {title}")
                     else:
-                        logger.warning(f"Audio extraction failed for: {title}")
-                        
-                except Exception as e:
-                    logger.error(f"Audio processing failed for {title}: {str(e)}")
-            
-            # Save video description/metadata with transcription data
-            save_video_description(info, description_filename, url, transcription_data)
-            
-            logger.info(f"✅ Successfully downloaded and processed: {title}")
-            return True
+                        logger.warning(f"Transcription failed for: {title}")
+                else:
+                    logger.warning(f"Audio extraction failed for: {title}")
+                    
+            except Exception as e:
+                logger.error(f"Audio processing failed for {title}: {str(e)}")
+        
+        # Save video description/metadata with transcription data
+        if timer: timer.start_step("Save Metadata")
+        save_video_description(info, description_filename, url, transcription_data)
+        if timer: timer.end_step("Save Metadata")
+        
+        # Log timing summary
+        if timer:
+            timer.log_summary(title)
+            total_processing_time = time.time() - video_start_time
+            logger.info(f"🎉 Total processing time: {total_processing_time:.2f}s")
+        
+        logger.info(f"✅ Successfully downloaded and processed: {title}")
+        return True
             
     except Exception as e:
         logger.error(f"❌ Failed to download {url}: {str(e)}")
@@ -496,13 +701,15 @@ def load_urls_from_file(file_path: str) -> list:
         logger.error(f"Error reading URL file {file_path}: {str(e)}")
         return []
 
-def download_multiple_tiktoks(urls: list, output_dir: str = ".", enable_transcription: bool = True):
+def download_multiple_tiktoks(urls: list, output_dir: str = ".", enable_transcription: bool = True, show_timing: bool = True):
     """
-    Download multiple TikTok videos with progress tracking and error handling
+    Download multiple TikTok videos with progress tracking, error handling, and batch timing analysis
     
     Args:
         urls: List of TikTok video URLs
         output_dir: Output directory for downloads
+        enable_transcription: Whether to enable audio transcription
+        show_timing: Whether to show detailed timing information and averages
     """
     if not urls:
         logger.error("No URLs provided for download")
@@ -512,35 +719,70 @@ def download_multiple_tiktoks(urls: list, output_dir: str = ".", enable_transcri
     successful_downloads = 0
     failed_downloads = 0
     
-    logger.info(f"Starting download of {total_videos} TikTok videos")
-    logger.info(f"Output directory: {output_dir}")
+    # Initialize batch timing tracker
+    batch_tracker = BatchTimingTracker() if show_timing else None
+    batch_start_time = time.time()
+    
+    logger.info(f"🎬 Starting download of {total_videos} TikTok videos")
+    logger.info(f"📁 Output directory: {output_dir}")
+    if show_timing:
+        logger.info(f"⏱️  Batch timing analysis: Enabled")
     
     # Create output directory if it doesn't exist
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir, exist_ok=True)
-        logger.info(f"Created output directory: {output_dir}")
+    os.makedirs(output_dir, exist_ok=True)
     
     for i, url in enumerate(urls, 1):
         logger.info(f"\n{'='*50}")
         
-        success = download_tiktok(url, output_dir, i, total_videos, enable_transcription)
+        success = download_tiktok(
+            url, output_dir, i, total_videos, 
+            enable_transcription, show_timing, batch_tracker
+        )
         
         if success:
             successful_downloads += 1
         else:
             failed_downloads += 1
         
-        # Progress update
+        # Progress update with timing info
         completion_percentage = (i / total_videos) * 100
-        logger.info(f"Progress: {completion_percentage:.1f}% ({i}/{total_videos})")
+        elapsed_time = time.time() - batch_start_time
+        
+        if show_timing and batch_tracker and batch_tracker.all_video_times:
+            # Calculate estimated time remaining
+            avg_time_per_video = elapsed_time / i
+            remaining_videos = total_videos - i
+            estimated_remaining = avg_time_per_video * remaining_videos
+            
+            logger.info(f"Progress: {completion_percentage:.1f}% ({i}/{total_videos}) | "
+                       f"Elapsed: {elapsed_time:.0f}s | "
+                       f"ETA: {estimated_remaining:.0f}s")
+        else:
+            logger.info(f"Progress: {completion_percentage:.1f}% ({i}/{total_videos})")
+    
+    # Calculate total batch time
+    total_batch_time = time.time() - batch_start_time
     
     # Final summary
     logger.info(f"\n{'='*50}")
-    logger.info(f"DOWNLOAD SUMMARY:")
+    logger.info(f"📊 DOWNLOAD SUMMARY:")
     logger.info(f"Total videos: {total_videos}")
     logger.info(f"Successful downloads: {successful_downloads}")
     logger.info(f"Failed downloads: {failed_downloads}")
     logger.info(f"Success rate: {(successful_downloads/total_videos)*100:.1f}%")
+    logger.info(f"Total batch time: {total_batch_time:.2f}s ({total_batch_time/60:.1f} min)")
+    
+    # Show detailed batch timing analysis
+    if show_timing and batch_tracker:
+        batch_tracker.log_batch_summary()
+        
+        # Additional efficiency metrics
+        if successful_downloads > 0:
+            avg_per_successful = total_batch_time / successful_downloads
+            logger.info(f"\n⚡ Efficiency Metrics:")
+            logger.info(f"   • Average time per successful video: {avg_per_successful:.2f}s")
+            logger.info(f"   • Videos per minute: {(successful_downloads / (total_batch_time/60)):.1f}")
+            logger.info(f"   • Throughput: {(successful_downloads / total_batch_time * 3600):.1f} videos/hour")
     
     return successful_downloads, failed_downloads
 
@@ -555,18 +797,24 @@ if __name__ == "__main__":
     urls = load_urls_from_file(urls_file)
     
     if urls:
-        # Enable/disable transcription (set to False if you want to skip audio processing)
-        enable_transcription = True
+        # Configuration options
+        enable_transcription = True  # Set to False if you want to skip audio processing
+        show_timing = True          # Set to False to disable detailed timing analysis
         
         logger.info(f"🎬 Starting TikTok download and processing...")
         logger.info(f"📁 Output directory: {output_directory}")
         logger.info(f"🎤 Audio transcription: {'Enabled' if enable_transcription else 'Disabled'}")
+        logger.info(f"⏱️  Timing analysis: {'Enabled' if show_timing else 'Disabled'}")
         
         if enable_transcription:
             logger.info("📋 Note: First run may take longer as models are downloaded")
             logger.info("📋 Note: Pyannote requires HuggingFace account and agreement acceptance")
+            
+        if show_timing:
+            logger.info("📋 Note: Timing analysis will show step-by-step performance metrics")
+            logger.info("📋 Note: Average times will be calculated across all videos in this batch")
         
-        # Download all videos
-        download_multiple_tiktoks(urls, output_directory, enable_transcription)
+        # Download all videos with timing analysis
+        download_multiple_tiktoks(urls, output_directory, enable_transcription, show_timing)
     else:
         logger.error("No URLs loaded. Please check your urls.txt file.")
